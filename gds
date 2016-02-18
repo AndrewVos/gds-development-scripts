@@ -1,0 +1,97 @@
+#!/bin/bash
+set -euo pipefail
+IFS=$'\n\t'
+
+GOVUK_PATH="/var/govuk"
+
+function health_check_mongo() {
+  set +e
+  mongo --eval 'db.stats()' > /dev/null 2>&1
+  RESULT=$?
+  set -e
+
+  if [[ $RESULT -eq 0 ]]; then
+    echo "✓ mongo"
+  else
+    echo "✗ mongo"
+    if [ -f "/var/lib/mongodb.lock" ]; then
+      printf "Removing mongodb lock file... "
+      sudo rm /var/lib/mongodb.lock
+      echo "done."
+    fi
+
+    printf "Launching mongo... "
+    sudo service mongodb start > /dev/null
+    echo "done."
+  fi
+
+  echo
+}
+
+function health_check_project() {
+  PROJECT=$1
+  FULL_PATH="$GOVUK_PATH/$PROJECT"
+
+  echo "[$PROJECT]"
+
+  if [[ -f "$FULL_PATH/Gemfile" ]]; then
+    set +e
+    cd $FULL_PATH && bundle check > /dev/null
+    RESULT=$?
+    set -e
+
+    if [[ $RESULT -eq 0 ]]; then
+      echo "✓ gems"
+    else
+      echo "✗ gems"
+      cd $FULL_PATH && bundle
+    fi
+  else
+    echo "✓ gems"
+  fi
+
+  if [[ -d "$FULL_PATH/.git" ]]; then
+    BRANCH_NAME="$(cd $FULL_PATH && git symbolic-ref HEAD 2>/dev/null)" ||
+      BRANCH_NAME="(unnamed branch)"
+
+    if [ "$BRANCH_NAME" == "refs/heads/master" ]; then
+      cd $FULL_PATH && git remote update > /dev/null 2>&1
+
+      LOCAL_SHA=$(cd $FULL_PATH && git rev-parse --verify HEAD)
+      REMOTE_SHA=$(cd $FULL_PATH && git rev-parse --verify FETCH_HEAD)
+
+      if [ "$LOCAL_SHA" == "$REMOTE_SHA" ]; then
+	echo "✓ git"
+      else
+	echo "✗ git"
+	cd $FULL_PATH && git pull --quiet 2>/dev/null
+      fi
+    else
+      echo "$PROJECT is not on master branch, it's on '${BRANCH_NAME}', so I'll leave it alone!"
+    fi
+  fi
+
+  if [[ -d "$FULL_PATH/db/migrate" ]]; then
+    cd $FULL_PATH && rake db:create db:migrate > /dev/null
+    echo "✓ db"
+  fi
+
+  echo
+}
+
+function health() {
+  health_check_mongo
+  DIRECTORIES=$(cd $GOVUK_PATH && ls -1)
+  for DIRECTORY in $DIRECTORIES; do
+    health_check_project "$DIRECTORY"
+  done
+}
+
+if [ $# -eq 0 ]; then
+  echo "Usage: $0 [--health]";
+  exit 1;
+fi
+
+if [[ "$@" == *"--health"* ]]; then
+  health
+fi
