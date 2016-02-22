@@ -20,6 +20,11 @@ function health_check_mongo() {
       echo "done."
     fi
 
+    printf "Repairing mongodb... "
+    sudo mongod --repair --dbpath /var/lib/mongodb > /dev/null
+    sudo chown -R mongodb:mongodb /var/lib/mongodb
+    echo "done."
+
     printf "Launching mongo... "
     sudo service mongodb start > /dev/null
     echo "done."
