@@ -39,22 +39,6 @@ function health_check_project() {
 
   echo "[$PROJECT]"
 
-  if [[ -f "$FULL_PATH/Gemfile" ]]; then
-    set +e
-    cd $FULL_PATH && bundle check > /dev/null
-    RESULT=$?
-    set -e
-
-    if [[ $RESULT -eq 0 ]]; then
-      echo "✓ gems"
-    else
-      echo "✗ gems"
-      cd $FULL_PATH && bundle
-    fi
-  else
-    echo "✓ gems"
-  fi
-
   if [[ -d "$FULL_PATH/.git" ]]; then
     BRANCH_NAME="$(cd $FULL_PATH && git symbolic-ref HEAD 2>/dev/null)" ||
       BRANCH_NAME="(unnamed branch)"
@@ -74,6 +58,22 @@ function health_check_project() {
     else
       echo "$PROJECT is not on master branch, it's on '${BRANCH_NAME}', so I'll leave it alone!"
     fi
+  fi
+
+  if [[ -f "$FULL_PATH/Gemfile" ]]; then
+    set +e
+    cd $FULL_PATH && bundle check > /dev/null
+    RESULT=$?
+    set -e
+
+    if [[ $RESULT -eq 0 ]]; then
+      echo "✓ gems"
+    else
+      echo "✗ gems"
+      cd $FULL_PATH && bundle
+    fi
+  else
+    echo "✓ gems"
   fi
 
   if [[ -d "$FULL_PATH/db/migrate" ]]; then
